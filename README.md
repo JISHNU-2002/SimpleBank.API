@@ -1,16 +1,18 @@
-# 📌 SimpleBank API – Overview
+# 📌 SimpleBank API
+## 1. Overview
 
 The **SimpleBank API** is a RESTful web service built with **ASP.NET Core Web API** using a **Code-First approach**. It is designed to provide core banking functionalities such as **account management, transactions, authentication, and user profile handling**. The API follows modern architectural practices, including **JWT authentication**, **repository pattern**, and **DTO-based data exchange**, ensuring security, scalability, and maintainability.
 
 ---
 
-## 🔑 Key Features
+## 2. Key Features
 
 1. **Authentication & Authorization**
 
    * Secure login and registration using **ASP.NET Core Identity**
-   * **JWT-based authentication** for client-server communication
-   * Role-based access control (Admin, User, etc.)
+   * **Token** based connection ensuring
+   * **JWT-based authentication** (Bearer Token) for client-server communication
+   * Role-based access control (Admin, Manager Customer, etc.)
 
 2. **Account Management**
 
@@ -36,7 +38,7 @@ The **SimpleBank API** is a RESTful web service built with **ASP.NET Core Web AP
 
 ---
 
-### ⚙️ Tech Stack
+## 3. Tech Stack
 
 * **Framework:** ASP.NET Core Web API
 * **Authentication:** JWT, ASP.NET Core Identity
@@ -46,7 +48,7 @@ The **SimpleBank API** is a RESTful web service built with **ASP.NET Core Web AP
 
 ---
 
-### 📂 Example Modules
+## 4. Example Modules
 
 * **AuthController** → Handles login, registration, and JWT token generation
 * **AccountsController** → Manages bank accounts and balances
@@ -56,6 +58,6 @@ The **SimpleBank API** is a RESTful web service built with **ASP.NET Core Web AP
 
 ---
 
-👉 This API serves as the backend foundation for the **SimpleBank Client (MVC app)**, providing all necessary endpoints for a seamless banking experience.
+This API serves as the backend foundation for the **SimpleBank Client (MVC app)**, providing all necessary endpoints for a seamless banking experience.
 
 ---
