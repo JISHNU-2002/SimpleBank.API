@@ -668,3 +668,300 @@ public async Task<string> GetTokenAsync(UserRequest userRequest)
 * **`GetTokenAsync`** = Token factory → Issues tokens signed with your secret key after validating API client credentials.
 ---
 
+## 2. **`Program.cs`**
+
+* The **entry point** of the application.
+* Configures **services** (DI container) and **middleware pipeline**.
+
+```csharp
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using SBapi.Entity.Data;
+using SBapi.Entity.Security;
+using SBapi.Service.Repository.Implementation;
+using SBapi.Service.Repository.Interface;
+using Serilog;
+using System.Text;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+
+builder.Services.AddControllers();
+// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddEndpointsApiExplorer();
+
+// Configure Entity Framework Core with SQL Server - AppDbContext
+builder.Services.AddDbContext<AppDbContext>(options =>
+options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Configure Identity with AppUser and IdentityRole - Password Rules
+builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
+{
+    options.Password.RequireDigit = true;
+    options.Password.RequiredLength = 8;
+    options.Password.RequireNonAlphanumeric = true;
+    options.Password.RequireUppercase = true;
+}).AddEntityFrameworkStores<AppDbContext>().AddDefaultTokenProviders();
+
+// Configure Swagger/OpenAPI
+builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("bearerAuth", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "JWT Authorization header using the Bearer scheme."
+    });
+});
+
+// Configure Serilog for logging
+var logger = new LoggerConfiguration()
+  .ReadFrom.Configuration(builder.Configuration)
+  .Enrich.FromLogContext()
+  .CreateLogger();
+builder.Logging.ClearProviders();
+builder.Logging.AddSerilog(logger);
+
+// Configure JWT Authentication
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"])
+        )
+    };
+});
+
+builder.Services.AddScoped<ITokenRepository, TokenRepository>();
+builder.Services.AddScoped<IAuthorizeRepository, AuthorizeRepository>();
+builder.Services.AddScoped<IBranchRepository, BranchRepository>();
+builder.Services.AddScoped<IApplicationFormRepository, ApplicationFormRepository>();
+builder.Services.AddScoped<IAccountTypeRepository, AccountTypeRepository>();
+builder.Services.AddScoped<IAccountRepository, AccountRepository>();
+builder.Services.AddScoped<ITransactionsRepository, TransactionsRepository>();
+builder.Services.AddScoped<IRoleRepository, RoleRepository>();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();
+
+```
+
+This is where **all services are wired up** and the app is bootstrapped.
+
+---
+
+## 3. **Controllers** (e.g., `AccountsController.cs`)
+
+* Define **RESTful endpoints**.
+* Call the **Service layer** (not the DB directly).
+* Handle **input validation** and return **responses (DTOs)**.
+
+Example: AuthorizeController 
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using SBapi.Common.Dto;
+using SBapi.Common.ErrorDto;
+using SBapi.Entity.Security;
+using SBapi.Service.Repository.Interface;
+
+namespace SimpleBank.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    [Authorize(AuthenticationSchemes = "Bearer")]
+    public class AuthorizeController : ControllerBase
+    {
+        private readonly IAuthorizeRepository _authorizeRepository;
+        private readonly UserManager<AppUser> _userManager;
+
+        public AuthorizeController(IAuthorizeRepository authorizeRepository,
+            UserManager<AppUser> userManager)
+        {
+            _authorizeRepository = authorizeRepository;
+            _userManager = userManager;
+        }
+
+        [HttpPost("AuthorizeUser")]
+        public async Task<IActionResult> AuthorizeUser(UserRequest userRequest)
+        {
+            return Ok(await _authorizeRepository.AuthorizeUser(userRequest));
+        }
+
+        [HttpPost("RegisterUser")]
+        public async Task<IActionResult> RegisterUser(RegisterRequestDto request)
+        {
+            return Ok(await _authorizeRepository.RegisterUser(request));
+        }
+    }
+}
+```
+
+They are the **entry point for clients** → define what the API exposes.
+
+---
+
+## 4. **`AppDbContext.cs`**
+
+* Inherits from `DbContext` (EF Core).
+* Represents the **database session**.
+* Defines **DbSets** (tables).
+* Configures relationships, keys, constraints.
+
+👉 Example:
+
+```csharp
+public class AppDbContext : IdentityDbContext<AppUser>
+{
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+    public DbSet<Account> Accounts { get; set; }
+    public DbSet<Transaction> Transactions { get; set; }
+    public DbSet<ApplicationForm> ApplicationForms { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        base.OnModelCreating(builder);
+        builder.Entity<Account>()
+            .HasMany(a => a.Transactions)
+            .WithOne(t => t.Account)
+            .HasForeignKey(t => t.AccountId);
+    }
+}
+```
+
+Acts as the **bridge between C# classes and SQL tables**.
+
+---
+
+## 5. **Models (Entities)**
+
+* Represent **database tables** (Domain objects).
+* Used by EF Core for persistence.
+
+Example: Branch
+
+```csharp
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace SBapi.Entity.Models
+{
+    [Table("tblBranch")]
+    public class Branch
+    {
+        [Key]
+        [MaxLength(20)]
+        public required string IFSC { get; set; }
+        [MaxLength(50)]
+        public string BranchName { get; set; } = string.Empty;
+        [MaxLength(50)]
+        public string State { get; set; } = string.Empty;
+        [MaxLength(50)]
+        public string Country { get; set; } = string.Empty;
+    }
+}
+```
+
+They are the **foundation of the domain** (banking data).
+
+---
+
+## 6. **Repositories (`Repos`)**
+
+* Provide **data access layer (DAL)**.
+* Encapsulate EF Core queries (no direct DbContext in controllers).
+* Follow **Repository Pattern**.
+
+Example:
+
+```csharp
+public interface IAccountRepository
+{
+    Task<Account> GetByAccountNumberAsync(string accountNumber);
+    Task CreateAsync(Account account);
+    Task SaveChangesAsync();
+}
+
+public class AccountRepository : IAccountRepository
+{
+    private readonly AppDbContext _context;
+    public AccountRepository(AppDbContext context) => _context = context;
+
+    public async Task<Account> GetByAccountNumberAsync(string accountNumber) =>
+        await _context.Accounts.FirstOrDefaultAsync(a => a.AccountNumber == accountNumber);
+
+    public async Task CreateAsync(Account account) =>
+        await _context.Accounts.AddAsync(account);
+
+    public async Task SaveChangesAsync() => await _context.SaveChangesAsync();
+}
+```
+
+Separates **data logic** from **business logic** → easy testing & maintenance.
+
+---
+
+## 7. **DTOs (Data Transfer Objects)**
+
+* Lightweight objects used for **communication** between layers.
+* Prevents exposing raw entity models (security).
+* Tailored to client needs.
+
+Example:
+
+```csharp
+public class TransferDto
+{
+    public string FromAccount { get; set; }
+    public string ToAccount { get; set; }
+    public decimal Amount { get; set; }
+}
+
+public class AccountDto
+{
+    public string AccountNumber { get; set; }
+    public decimal Balance { get; set; }
+}
+```
+
+Provide a **clean contract** between API and Client, separate from DB schema.
+
+---
+
+
