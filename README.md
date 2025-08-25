@@ -451,3 +451,220 @@ namespace SBapi.Common.ErrorDto
 
 ---
 
+
+# 📂 IV. Main Files in SimpleBank API
+
+---
+
+## 1. **`appsettings.json`**
+
+* Stores **configuration settings** for the API.
+* Common sections:
+
+  * **ConnectionStrings** → database connection for EF Core
+  * **JWT Settings** → secret key, issuer, expiry for authentication
+  * **Logging & Environment configs**
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=.\SQLSERVER2019;Database=SimpleBankDB;User Id=sa;Password=Password123;TrustServerCertificate=True;MultipleActiveResultSets=true"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "ApiSecurity": {
+    "ClientId": "admin@gmail.com",
+    "ClientSecret": "admin@123"
+  },
+  "Jwt": {
+    "Issuer": "Jwt@Test",
+    "Audience": "Jwt@Tester",
+    "Key": "7c3f9030-2fd1-4e48-9bc4-8e3f4c61ad41",
+    "Subject": "JWTServiceAccessToken"
+  },
+  "AllowedHosts": "*",
+  "Serilog": {
+    "Using": [ "Serilog.Sinks.File" ],
+    "MinimumLevel": {
+      "Default": "Information"
+    },
+    "WriteTo": [
+      {
+        "Name": "File",
+        "Args": {
+          "path": "logs/webapi-.log",
+          "rollingInterval": "Day",
+          "outputTemplate": "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {CorrelationId} {Level:u3}] {Username} {Message:lj}{NewLine}{Exception}"
+        }
+      }
+    ]
+  }
+}
+```
+
+- Keeps sensitive info (like DB connection, JWT keys) **outside code** → easier to change per environment (Dev/Prod).
+- **Serilog** is used for Logging.
+
+
+```csharp
+"ApiSecurity": {
+  "ClientId": "admin@gmail.com",
+  "ClientSecret": "admin@123"
+}
+```
+
+- This section defines static client credentials (like username & password for the API itself).
+- Often used in Client Credentials Flow (machine-to-machine authentication).
+- Here, a basic API authentication mechanism where requests must provide:
+    - ClientId → like a username (here, admin@gmail.com)
+    - ClientSecret → like a password (admin@123)
+    
+- When a client (MVC app) requests a JWT token, it first sends these credentials.
+- The API checks if ClientId and ClientSecret match the config.
+- If valid → the API issues a JWT token for further requests.
+
+## **JWT Authentication**
+- This section defines the configuration for JWT (JSON Web Tokens), which the API uses for stateless authentication.
+- ApiSecurity → like a gatekeeper (client id & secret) → only trusted apps can request tokens.
+- Jwt → defines the actual token authentication system → how tokens are created and validated for each request.
+
+```csharp
+"Jwt": {
+  "Issuer": "Jwt@Test",
+  "Audience": "Jwt@Tester",
+  "Key": "7c3f9030-2fd1-4e48-9bc4-8e3f4c61ad41",
+  "Subject": "JWTServiceAccessToken"
+}
+```
+
+**Keys explained**
+- Issuer (Jwt@Test) → The authority that issues the token (your API).
+- Audience (Jwt@Tester) → Who the token is intended for (your client apps).
+- Key → The secret key used to sign and validate tokens (must be long and secure).
+- Subject (JWTServiceAccessToken) → Optional claim describing the token’s purpose.
+
+**Work Flow**
+- When a user/client logs in successfully:
+    - API generates a JWT signed with the Key.
+    - The JWT includes claims (like AccountNumber, Role).
+- The client must send this token in the Authorization: Bearer <token> header for every request.
+- The API verifies the token’s signature using the same Key, and checks Issuer & Audience before processing the request.
+
+
+**JWT Authentication setup in `Program.cs`**
+
+```csharp
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"])
+        )
+    };
+});
+```
+
+
+* **`AddAuthentication`** → Enables authentication in the pipeline.
+* **`DefaultAuthenticateScheme` & `DefaultChallengeScheme`** → Tells ASP.NET to use **JWT Bearer Authentication** (instead of cookies, OAuth, etc.).
+* **`AddJwtBearer`** → Configures **how tokens will be validated**.
+
+Validation rules set here:
+
+* **`ValidateIssuer = true`** → The token’s issuer (who created it) must match config.
+* **`ValidateAudience = true`** → The token must be intended for your API (audience check).
+* **`ValidateLifetime = true`** → Expired tokens will be rejected.
+* **`ValidateIssuerSigningKey = true`** → Token signature must match the configured secret key.
+* **`ValidIssuer` & `ValidAudience`** → Read from `appsettings.json` (`Jwt` section).
+* **`IssuerSigningKey`** → Symmetric key created from your secret string (`Jwt:Key`).
+
+This ensures that **only tokens issued by your API** (with correct secret, issuer, audience, and still valid) are accepted.
+
+
+**Token generation method (`GetTokenAsync`)**
+
+```csharp
+public async Task<string> GetTokenAsync(UserRequest userRequest)
+{
+    var username = _configuration["ApiSecurity:ClientId"];
+    var password = _configuration["ApiSecurity:ClientSecret"];
+
+    if (!(userRequest.UserName.Equals(username, StringComparison.OrdinalIgnoreCase) 
+          && userRequest.Password == password))
+    {
+        throw new UnauthorizedAccessException("Invalid username or password.");
+    }
+
+    var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
+    var signingCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+    var token = new JwtSecurityToken(
+        issuer: _configuration["Jwt:Issuer"],
+        audience: _configuration["Jwt:Audience"],
+        expires: DateTime.UtcNow.AddMinutes(10),
+        signingCredentials: signingCredentials
+    );
+
+    return new JwtSecurityTokenHandler().WriteToken(token);
+}
+```
+
+**Work Flow**
+
+1. **Check API credentials (`ApiSecurity`)**
+
+   * Reads `ClientId` and `ClientSecret` from config (`appsettings.json`).
+   * Compares with values sent in `UserRequest`.
+   * If wrong → throw `UnauthorizedAccessException`.
+        - This ensures **only trusted clients** can ask for a token.
+
+2. **Generate JWT token (`Jwt` section)**
+
+   * **Key** → Uses the same `Jwt:Key` as configured in `Program.cs`.
+   * **SigningCredentials** → Signs the token with **HMAC-SHA256**.
+   * **JwtSecurityToken** → Creates a token with:
+
+     * **Issuer** (`Jwt:Issuer`)
+     * **Audience** (`Jwt:Audience`)
+     * **Expiry** → 10 minutes
+     * **Signing credentials**
+
+3. **Return Token**
+
+   * Uses `JwtSecurityTokenHandler` to **serialize the token into a string**.
+   * This string is what the client will use in `Authorization: Bearer <token>` header.
+
+---
+
+**Complete Work Flow of JWT Authentication**
+
+1. **Client requests token** → Calls an endpoint like `/api/auth/token` with `ClientId` & `ClientSecret`.
+2. **`GetTokenAsync` runs** → Verifies client → Issues JWT signed with your `Jwt:Key`.
+3. **Client calls protected API** → Sends `Authorization: Bearer <token>`.
+4. **JWT Middleware (`Program.cs`)** → Automatically validates token against `Issuer`, `Audience`, `Lifetime`, and `Key`.
+5. **If valid** → Request passes through to controller. If not → 401 Unauthorized.
+
+---
+\
+**In short**:
+
+* **`Program.cs` setup** = Gatekeeper → Defines how incoming tokens will be verified.
+* **`GetTokenAsync`** = Token factory → Issues tokens signed with your secret key after validating API client credentials.
+---
+
