@@ -1061,8 +1061,7 @@ Prefer **Postman** for manual testing:
 * **GET** `https://localhost:<port>/api/account/{id}`
 ---
 
-![Testing_Postman](https://github.com/JISHNU-2002/SimpleBank.API/blob/master/SimpleBank/Images/SimpleBank_Postman.png)
-
+[![Testing_Postman](https://github.com/JISHNU-2002/SimpleBank.API/blob/master/SimpleBank/Images/SimpleBank_Postman.png)
 
 With this, **authentication flow is fully tested** in both Swagger and Postman.
 
