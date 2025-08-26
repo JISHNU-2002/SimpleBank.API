@@ -1027,9 +1027,9 @@ Now in Swagger UI, an **Authorize button** is available → paste `Bearer <token
 4. Authorize Button -> Value: (Paste the token) -> Authorize
 5. Call secured APIs (like `/api/account/{id}`) → you’ll get results instead of `401 Unauthorized`.
 
----
-
 ![Testing_Swagger](https://github.com/JISHNU-2002/SimpleBank.API/blob/master/SimpleBank/Images/SimpleBank_Swagger.png)
+
+---
 
 ### 4. Testing with Postman
 
@@ -1059,9 +1059,10 @@ Prefer **Postman** for manual testing:
 #### Step 3: Call Protected API
 
 * **GET** `https://localhost:<port>/api/account/{id}`
----
 
-[![Testing_Postman](https://github.com/JISHNU-2002/SimpleBank.API/blob/master/SimpleBank/Images/SimpleBank_Postman.png)
+![Testing_Postman](https://github.com/JISHNU-2002/SimpleBank.API/blob/master/SimpleBank/Images/SimpleBank_Postman.png)
+
+---
 
 With this, **authentication flow is fully tested** in both Swagger and Postman.
 
