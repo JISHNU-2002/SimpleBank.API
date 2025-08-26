@@ -962,4 +962,109 @@ Provide a **clean contract** between API and Client, separate from DB schema.
 
 ---
 
+# V. API Testing with Swagger and Postman
+
+### 1. Swagger Setup
+
+ASP.NET Core automatically integrates **Swagger (Swashbuckle)** when enabling it. In your `Program.cs`
+
+```csharp
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+```
+
+
+This will expose **Swagger UI** at:
+
+```
+https://localhost:<port>/swagger/index.html
+```
+
+---
+
+### 2. Add JWT Support in Swagger
+
+To test protected endpoints in Swagger, configure it to accept JWT tokens:
+
+```csharp
+// Configure Swagger/OpenAPI
+builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("bearerAuth", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "JWT Authorization header using the Bearer scheme."
+    });
+});
+```
+
+Now in Swagger UI, an **Authorize button** is available → paste `Bearer <token>` → all `[Authorize]` endpoints will work.
+
+---
+
+### 3. Testing Flow in Swagger
+
+1. Call **`/api/Token/GetToken`** → enter username/password from `ApiSecurity`.
+2. Copy the token returned.
+3. Click **Authorize** → paste:
+
+   ```
+   Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6...
+   ```
+4. Authorize Button -> Value: (Paste the token) -> Authorize
+5. Call secured APIs (like `/api/account/{id}`) → you’ll get results instead of `401 Unauthorized`.
+
+---
+
+![Testing_Swagger](https://github.com/JISHNU-2002/SimpleBank.API/blob/master/SimpleBank/Images/SimpleBank_Swagger.png)
+
+### 4. Testing with Postman
+
+Prefer **Postman** for manual testing:
+
+#### Step 1: Get Token
+
+* **POST** `https://localhost:<port>/api/Token/GetToken`
+* Body (JSON):
+
+  ```json
+  {
+    "userName": "admin@gmail.com",
+    "password": "admin@123"
+  }
+  ```
+* Response:
+
+  ```json
+  {
+    "token": "eyJhbGciOiJIUzI1NiIsInR..."
+  }
+  ```
+#### Step 2: Authorize Token
+- Authorization -> Auth Type -> Bearer Token -> (Paste the token)
+
+#### Step 3: Call Protected API
+
+* **GET** `https://localhost:<port>/api/account/{id}`
+---
+
+![Testing_Postman](https://github.com/JISHNU-2002/SimpleBank.API/blob/master/SimpleBank/Images/SimpleBank_Postman.png)
+
+
+With this, **authentication flow is fully tested** in both Swagger and Postman.
+
+---
 
