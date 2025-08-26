@@ -843,8 +843,6 @@ They are the **entry point for clients** → define what the API exposes.
 * Defines **DbSets** (tables).
 * Configures relationships, keys, constraints.
 
-👉 Example:
-
 ```csharp
 public class AppDbContext : IdentityDbContext<AppUser>
 {
