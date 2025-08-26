@@ -4,9 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using SBapi.Common.Dto;
 using SBapi.Common.ErrorDto;
 using SBapi.Entity.Security;
-using SBapi.Service.Repository.Implementation;
 using SBapi.Service.Repository.Interface;
-using System.Security.Claims;
 
 namespace SimpleBank.Controllers
 {
