@@ -1055,3 +1055,266 @@ With this, **authentication flow is fully tested** in both Swagger and Postman.
 
 ---
 
+# VI. Sequence and Stored Procedure
+In SimpleBank.api mainly two Stored Procedures and related to this two SQL Sequences are used.
+
+1. To get the next AccountNumber 
+2. To get the next IFSCode
+
+```csharp
+// In Dto Section declare the SequenceValue for iterating the AccountNumber & IFSCode
+namespace SBapi.Common.Dto
+{
+    public class SequenceValue
+    {
+        public int Value { get; set; }
+    }
+}
+```
+
+```csharp
+// In AppDbContext
+modelBuilder.Entity<SequenceValue>().HasNoKey().ToView(null);
+
+// IFSC Sequence for Branches
+modelBuilder.HasSequence<int>("IFSCSequence", schema: "dbo")
+    .StartsAt(005993)
+    .IncrementsBy(1);
+modelBuilder.Entity<Branch>()
+    .Property(b => b.IFSC)
+    .HasMaxLength(50);
+
+// AccountNumber Sequence for Accounts
+modelBuilder.HasSequence<int>("AccountNumberSequence", schema: "dbo")
+    .StartsAt(11235813)
+    .IncrementsBy(1);
+modelBuilder.Entity<Account>()
+    .Property(b => b.AccountNumber)
+    .HasMaxLength(50);
+```
+
+## Sequence
+In SQL Server, a **Sequence** is a user-defined schema-bound object that generates a sequence of numeric values according to a specified specification. It's often used to generate unique values, similar to identity columns, but with more flexibility.
+
+---
+
+### Basic Syntax to Create a Sequence
+
+```sql
+CREATE SEQUENCE SequenceName
+    START WITH 1
+    INCREMENT BY 1
+    MINVALUE 1
+    MAXVALUE 1000
+    CYCLE; -- Optional: restarts when max is reached
+```
+
+
+```sql
+CREATE SEQUENCE OrderSeq
+    START WITH 1000
+    INCREMENT BY 1;
+```
+
+To use the sequence:
+
+```sql
+SELECT NEXT VALUE FOR OrderSeq;
+```
+
+You can also use it in an `INSERT` statement:
+
+```sql
+INSERT INTO Orders (OrderID, CustomerName)
+VALUES (NEXT VALUE FOR OrderSeq, 'John Doe');
+```
+
+---
+
+### Managing Sequences
+
+- **View current value**:
+  ```sql
+  SELECT NEXT VALUE FOR OrderSeq;
+  ```
+
+- **Alter a sequence**:
+  ```sql
+  ALTER SEQUENCE OrderSeq
+  RESTART WITH 2000;
+  ```
+
+- **Delete a sequence**:
+  ```sql
+  DROP SEQUENCE OrderSeq;
+  ```
+
+---
+
+### When to Use Sequences vs Identity
+
+| Feature              | Sequence                     | Identity Column              |
+|----------------------|------------------------------|------------------------------|
+| Reusable             |  Yes                        |  No                         |
+| Manual control       |  Yes (can restart, increment) | No                         |
+| Use across tables    |  Yes                        |  No                         |
+| Auto-increment       |  No (must use explicitly)   |  Yes                        |
+
+```bash
+Programmability -> Sequences
+```
+
+### 1. AccountNumberSequence
+- This SQL Sequence generates AccountNumber starting from 11235813, increments by 1 each time it called
+
+```SQL
+USE [SimpleBankDB]
+GO
+
+CREATE SEQUENCE [dbo].[AccountNumberSequence] 
+ AS [int]
+ START WITH 11235813
+ INCREMENT BY 1
+ MINVALUE -2147483648
+ MAXVALUE 2147483647
+ CACHE 
+GO
+```
+
+### 2. IFSCSequence
+- This SQL Sequence generates IFSCode starting from 05993, increments by 1 each time it called
+
+```SQL
+USE [SimpleBankDB]
+GO
+
+CREATE SEQUENCE [dbo].[IFSCSequence] 
+ AS [int]
+ START WITH 5993
+ INCREMENT BY 1
+ MINVALUE -2147483648
+ MAXVALUE 2147483647
+ CACHE 
+GO
+```
+
+## Stored Procedure
+- A stored procedure in SQL Server is a precompiled collection of one or more SQL statements that can be executed as a single unit.
+- It's used to encapsulate logic, improve performance, and promote code reuse.
+- Modularity: Encapsulate logic for reuse.
+- Performance: Precompiled execution improves speed.
+- Security: Permissions can be granted on the procedure rather than the underlying tables.
+- Maintainability: Easier to update logic in one place.
+
+```bash
+Programmability -> Stored Procedures
+```
+
+### 1. GetNextAccountNumberSequenceValue
+
+```SQL
+USE [SimpleBankDB]
+GO
+
+CREATE PROCEDURE [dbo].[GetNextAccountNumberSequenceValue]
+    AS
+    BEGIN
+        SET NOCOUNT ON;
+        SELECT NEXT VALUE FOR dbo.AccountNumberSequence AS Value;
+    END
+GO
+
+```
+
+- In **AccountRepository/CreateAccountAsync** call the stored procedure **GetNextAccountNumberSequenceValue**, so everytime an application approved, the user account is created with the an AccountNumber according to the Sequence
+```csharp
+var value = await _context.Set<SequenceValue>()
+    .FromSqlRaw("EXEC dbo.GetNextAccountNumberSequenceValue")
+    .AsNoTracking().ToListAsync();
+
+var accountNumber = value.First().Value;
+
+Account newAccount = new Account
+{
+    AccountNumber = accountNumber.ToString(),
+    Balance = initialBalance,
+};
+
+await _context.AccountSet.AddAsync(newAccount);
+```
+
+### 2. GetNextIFSCSequenceValue
+
+```SQL
+USE [SimpleBankDB]
+GO
+
+CREATE PROCEDURE [dbo].[GetNextIFSCSequenceValue]
+    AS
+    BEGIN
+        SET NOCOUNT ON;
+        SELECT NEXT VALUE FOR dbo.IFSCSequence AS Value;
+    END
+
+GO
+```
+
+- In **BranchRepository/AddBranchAsync** call the stored procedure **GetNextIFSCSequenceValue**, so everytime  a new branch is creating the IFSCode is generated accordingly
+```csharp
+var value = await _context.Set<SequenceValue>()
+    .FromSqlRaw("EXEC dbo.GetNextIFSCSequenceValue")
+    .AsNoTracking().ToListAsync();
+
+int val = value.First().Value;
+
+Branch newBranch = new Branch
+{
+    IFSC = "SBIFSC" + val.ToString(),
+    BranchName = branch.BranchName, 
+    State = branch.State,
+    Country = branch.Country,
+};
+
+await _context.BranchSet.AddAsync(newBranch);
+```
+
+---
+
+# VII. Seed Data to Database
+
+```csharp
+AppUser user = new()
+{
+    Id = "0ca18703-c5ca-41bb-a1bb-a0a7665aa8b9",
+    UserName = "superadmin@gmail.com",
+    NormalizedUserName = "SUPERADMIN@GMAIL.COM",
+    Email = "superadmin@gmail.com",
+    NormalizedEmail = "SUPERADMIN@GMAIL.COM",
+    IsActive = true,
+};
+
+string password = "SuperAdmin@123";
+PasswordHasher<AppUser> passwordHasher = new PasswordHasher<AppUser>();
+user.PasswordHash = passwordHasher.HashPassword(user, password);
+modelBuilder.Entity<AppUser>().HasData(user);
+
+IdentityRole role = new()
+{
+    Id = "b1c2d3e4-f5g6-h7i8-j9k0-l1m2n3o4p5q6",
+    Name = "SuperAdmin",
+    NormalizedName = "SUPERADMIN"
+};
+modelBuilder.Entity<IdentityRole>().HasData(role);
+
+modelBuilder.Entity<IdentityUserRole<string>>().HasData(new IdentityUserRole<string>
+{
+    UserId = user.Id,
+    RoleId = role.Id
+});
+```
+1. Insert the user with username superadmin@gmail.com and default values in AspNetUsers table.
+2. Insert the role SuperAdmin AspNetRoles table.
+3. Bind the User and the Role in AspNetUserRoles table.
+
+---
+
