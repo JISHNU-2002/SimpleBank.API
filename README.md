@@ -1038,9 +1038,7 @@ Prefer **Postman** for manual testing:
 * Response:
 
   ```json
-  {
-    "token": "eyJhbGciOiJIUzI1NiIsInR..."
-  }
+  "eyJhbGciOiJIUzI1NiIsInR..."
   ```
 #### Step 2: Authorize Token
 - Authorization -> Auth Type -> Bearer Token -> (Paste the token)
